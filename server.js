@@ -29,6 +29,7 @@ const compression = require('compression');
 const morgan = require('morgan');
 
 const { createStore, COLLECTIONS } = require('./storage');
+const integrations = require('./integrations');
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -232,6 +233,25 @@ app.get('/healthz', (req, res) =>
   res.json({ ok: true, env: NODE_ENV, store: store.driver })
 );
 
+// ── Integration: OUTBOUND pipeline (server-to-server, shared key) ──
+// The Operations hub (or any service holding INTEGRATION_API_KEY) pulls this
+// CRM's deals from here. No Google session — authenticated by x-api-key only.
+app.get('/api/integrations/pipeline', async (req, res, next) => {
+  if (!integrations.INTEGRATION_API_KEY) {
+    return res.status(503).json({ error: 'integration_not_configured' });
+  }
+  const provided = req.get('x-api-key') || req.query.key;
+  if (!integrations.keyOk(provided)) {
+    return res.status(401).json({ error: 'invalid_api_key' });
+  }
+  try {
+    const deals = await integrations.buildOutboundPipeline(store);
+    res.json({ deals, count: deals.length, source: 'cardio-crm' });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // REST API (all protected)
 // ---------------------------------------------------------------------------
@@ -241,6 +261,17 @@ api.use(ensureApiAuth);
 function isValidCollection(name) {
   return COLLECTIONS.includes(name);
 }
+
+// ── Integration: INBOUND (read-only deals pulled from upstream sources) ──
+// Surfaced to the signed-in CRM UI and merged alongside manual deals.
+api.get('/integrations/external', async (req, res, next) => {
+  try {
+    res.json(await integrations.getExternalPipeline());
+  } catch (e) {
+    next(e);
+  }
+});
+api.get('/integrations/status', (req, res) => res.json(integrations.status()));
 
 // Reshape the flat `deals` rows into the stage-keyed object the SPA expects.
 function dealsToStageMap(dealRows) {
