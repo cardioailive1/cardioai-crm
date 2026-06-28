@@ -1,15 +1,26 @@
 # Cardio AI CRM Pro
 
 A production-ready, full-stack version of the Cardio AI sales & clinical CRM.
- This s is a dynamic platform with a Node/Express backend, **Google Workspace SSO**, a
+The original was a single static HTML file backed by `localStorage`; this is a
+dynamic platform with a Node/Express backend, **Google Workspace SSO**, a
 **PostgreSQL** database, and a server-side AI proxy — deployable on
 [Render.com](https://render.com) with one Blueprint.
 
 It uses the **same authentication and deployment architecture** as the Cardio AI
 Operations platform: Passport + Google OAuth, domain-restricted sign-in,
-Postgres-backed sessions, and a document store seeded on first boot.
+Postgres-backed sessions, and a generic document store seeded on first boot.
 
 ---
+
+## What changed vs. the static file
+
+| Area | Before | Now |
+| --- | --- | --- |
+| Persistence | Browser `localStorage` (per device) | PostgreSQL, shared across the team |
+| Auth | Client-side 4-digit PIN (cosmetic) | Google Workspace SSO, domain-restricted |
+| AI Assistant | Anthropic key in the browser | Server-side proxy (`ANTHROPIC_API_KEY`) |
+| Roles | PIN → role map | Signed-in Google email → role map |
+| Hosting | Open the file | Node web service + managed Postgres on Render |
 
 The entire CRM UI — dashboard, contacts, pipeline (Kanban), tasks,
 notifications, activity feed, sequences, Salesforce view, analytics, and all the
@@ -155,7 +166,76 @@ service — it reseeds from `seed.json` when `documents` is empty.
 
 ---
 
-## Project structure
+## Connecting to the Operations hub & Sales platform
+
+Your three services exchange pipeline over one shared contract:
+
+```
+GET /api/integrations/pipeline
+Header:  x-api-key: <INTEGRATION_API_KEY>
+200 ->   { "deals": [ ... ], "count": N }
+```
+
+Your deployed services:
+
+| Service | URL |
+|---|---|
+| Operations hub | `https://cardioai-operations-3ejs.onrender.com` |
+| Sales platform | `https://cardioai-sales-platform.onrender.com` |
+| This CRM | `https://cardio-ai-crm.onrender.com` |
+
+Set the **same** `INTEGRATION_API_KEY` on all three (server env only — never the browser).
+
+### Recommended wiring (no duplicates, no loops)
+
+```
+   Sales platform ──pull──▶ CRM   (CRM shows sales deals, read-only)
+   Sales platform ──pull──▶ Operations hub   (unchanged; already configured)
+   CRM ───────────pull──────▶ Operations hub   (hub also shows CRM deals)
+```
+
+**1. CRM ← Sales platform (already set in `render.yaml`)**
+On this CRM: `SALES_ENGINE_URL=https://cardioai-sales-platform.onrender.com` + the
+shared key. Sales-platform deals appear in the CRM Pipeline as read-only
+"⚡ connected" cards. *(Requires the sales platform to expose
+`/api/integrations/pipeline` — the same endpoint the ops hub already pulls.)*
+
+**2. Operations hub ← CRM** — pick one:
+
+- **A. Add the CRM as a second source on the hub** *(keeps the hub's existing
+  sales-platform pull)*. The hub's connector currently reads a single
+  `SALES_ENGINE_URL`; adding a second source is a small change on the hub side.
+  Tell me and I'll patch the hub to read a comma-separated `PIPELINE_SOURCES` so
+  it pulls **both** the sales platform and the CRM.
+
+- **B. Make the CRM the hub's single aggregated source** *(no hub code change)*.
+  On the CRM set `INTEGRATION_EXPORT_EXTERNAL=true` (so its outbound feed = CRM
+  deals **+** the sales-platform deals it pulled), then on the hub repoint
+  `SALES_ENGINE_URL` to `https://cardio-ai-crm.onrender.com`. The hub gets the
+  whole pipeline from one place. Don't also pull the sales platform directly on
+  the hub in this mode, or those deals count twice.
+
+> Why `OPERATIONS_URL` is left unset on the CRM: the hub aggregates downstream,
+> so pulling it back into the CRM would re-import the CRM's own (and sales)
+> deals. Keep the CRM pointed at the sales platform only.
+
+### Verify
+
+```bash
+# CRM exposes its pipeline (run after deploy):
+curl -H "x-api-key: $INTEGRATION_API_KEY" \
+  https://cardio-ai-crm.onrender.com/api/integrations/pipeline
+
+# What the CRM is pulling / its integration state (signed in):
+curl https://cardio-ai-crm.onrender.com/api/integrations/status
+```
+
+Field names are matched tolerantly across services:
+`account|company|organization|name`, `value|amount|dealValue|dealSize`
+(parses `$540K`, `1.2M`, `880000`), `stage|status`, `owner|rep|assignedTo|salesRep`,
+`contact|contactName|champion|poc`, `probability|winProbability`.
+
+---
 
 ```
 cardio-ai-crm/
@@ -164,7 +244,7 @@ cardio-ai-crm/
 ├── .env.example
 ├── .gitignore
 ├── server.js            # Express app: Google OAuth, REST API, AI proxy
-├── storage.js           # Postgres (or file) document store + seeding
+ storage.js + integrations placeholder# Postgres (or file) document store + seeding
 ├── seed.json            # initial CRM data (contacts, deals, tasks, …)
 └── public/
     └── index.html       # the CRM single-page app (API-backed)
