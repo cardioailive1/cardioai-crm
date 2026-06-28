@@ -12,16 +12,6 @@ Postgres-backed sessions, and a generic document store seeded on first boot.
 
 ---
 
-## What changed vs. the static file
-
-| Area | Before | Now |
-| --- | --- | --- |
-| Persistence | Browser `localStorage` (per device) | PostgreSQL, shared across the team |
-| Auth | Client-side 4-digit PIN (cosmetic) | Google Workspace SSO, domain-restricted |
-| AI Assistant | Anthropic key in the browser | Server-side proxy (`ANTHROPIC_API_KEY`) |
-| Roles | PIN → role map | Signed-in Google email → role map |
-| Hosting | Open the file | Node web service + managed Postgres on Render |
-
 The entire CRM UI — dashboard, contacts, pipeline (Kanban), tasks,
 notifications, activity feed, sequences, Salesforce view, analytics, and all the
 other tabs — is preserved. Role-based navigation gating still applies, now keyed
