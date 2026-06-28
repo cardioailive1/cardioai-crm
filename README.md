@@ -1,26 +1,15 @@
 # Cardio AI CRM Pro
 
 A production-ready, full-stack version of the Cardio AI sales & clinical CRM.
-The original was a single static HTML file backed by `localStorage`; this is a
-dynamic platform with a Node/Express backend, **Google Workspace SSO**, a
+ This s is a dynamic platform with a Node/Express backend, **Google Workspace SSO**, a
 **PostgreSQL** database, and a server-side AI proxy — deployable on
 [Render.com](https://render.com) with one Blueprint.
 
 It uses the **same authentication and deployment architecture** as the Cardio AI
 Operations platform: Passport + Google OAuth, domain-restricted sign-in,
-Postgres-backed sessions, and a generic document store seeded on first boot.
+Postgres-backed sessions, and a document store seeded on first boot.
 
 ---
-
-## What changed vs. the static file
-
-| Area | Before | Now |
-| --- | --- | --- |
-| Persistence | Browser `localStorage` (per device) | PostgreSQL, shared across the team |
-| Auth | Client-side 4-digit PIN (cosmetic) | Google Workspace SSO, domain-restricted |
-| AI Assistant | Anthropic key in the browser | Server-side proxy (`ANTHROPIC_API_KEY`) |
-| Roles | PIN → role map | Signed-in Google email → role map |
-| Hosting | Open the file | Node web service + managed Postgres on Render |
 
 The entire CRM UI — dashboard, contacts, pipeline (Kanban), tasks,
 notifications, activity feed, sequences, Salesforce view, analytics, and all the
